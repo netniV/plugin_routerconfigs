@@ -220,8 +220,10 @@ function view_device_config() {
 		print __('Backup from %s', date('M j Y H:i:s', $device['btime']), 'routerconfigs') . '<br>';
 		print __('File: %s/%s', $device['directory'], $device['filename'], 'routerconfigs');
 		print '</h1><textarea rows=36 cols=120>';
+//		print '</h1><pre>';
 		print $device['config'];
 		print '</textarea></td></tr>';
+//		print '</pre></td></tr>';
 
 		html_end_box(false);
 
@@ -462,7 +464,8 @@ function show_devices() {
 	}
 
 	load_current_session_value('page', 'sess_routerconfigs_devices_current_page', '1');
-	$num_rows = 30;
+//	$num_rows = 30;
+        $num_rows = read_config_option('num_rows_table');
 
 	$sql = 'SELECT * FROM plugin_routerconfigs_devices ';
 	if ($account != '') {
@@ -543,4 +546,3 @@ function show_devices() {
 
 	form_end();
 }
-

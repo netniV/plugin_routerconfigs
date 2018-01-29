@@ -161,7 +161,8 @@ function plugin_routerconfigs_download_config ($device) {
 		exit;
 	}
 
-	$tftpserver = read_config_option('routerconfigs_tftpserver');
+        $tftpserver = (2 > strlen($info['ftpserver'])) ? read_config_option('routerconfigs_tftpserver') : $info['ftpserver'];
+        
 	if (strlen($tftpserver) < 2) {
 		print __('FATAL: TFTP Server is not set', 'routerconfigs');
 		exit;
@@ -186,6 +187,7 @@ function plugin_routerconfigs_download_config ($device) {
 	}
 
 	$connection = new PHPSsh();
+	
 	if (($result = $connection->Connect($device['ipaddress'], $info['username'], $info['password'], $info['enablepw'], $devicetype))) {
 		$connection = NULL;
 		$connection = new PHPTelnet();
@@ -200,14 +202,20 @@ function plugin_routerconfigs_download_config ($device) {
 
 	if ($result == 0) {
 		$command = $devicetype['copytftp'];
-		if (stristr($command, '%SERVER%')) {
-			$command = str_replace('%SERVER%', $tftpserver, $command);
-		}
+                if("on"==$info['useftp'])
+                {
+                    $command .="://".$info['ftpuser'].":".$info['ftppass']."@".$tftpserver."/".$tftpfilename;
+                }
+                else
+                {
+                    if (stristr($command, '%SERVER%')) {
+                            $command = str_replace('%SERVER%', $tftpserver, $command);
+                    }
 
-		if (stristr($command, '%FILE%')) {
-			$command=str_replace('%FILE%', $filename, $command);
-		}
-
+                    if (stristr($command, '%FILE%')) {
+                            $command=str_replace('%FILE%', $filename, $command);
+                    }
+                }
 		plugin_routerconfigs_log($ip . "-> DEBUG: command to execute $command");
 		$connection->DoCommand($command, $result);
 		$debug .= $result;
@@ -224,12 +232,14 @@ function plugin_routerconfigs_download_config ($device) {
 		}
 
 		//send tftpserver if necessary
-		if (stristr($debug, 'address') && !stristr($debug, "[$ip]")) {
-			$connection->DoCommand($tftpserver, $result);
-			$debug .= $result;
-			$connection->GetResponse($result);
-			plugin_routerconfigs_log($ip . "-> DEBUG: send serverip result=$debug");
-		}
+                if("on"!=$info['useftp']){
+                    if (stristr($debug, 'address') && !stristr($debug, "[$ip]")) {
+                            $connection->DoCommand($tftpserver, $result);
+                            $debug .= $result;
+                            $connection->GetResponse($result);
+                            plugin_routerconfigs_log($ip . "-> DEBUG: send serverip result=$debug");
+                    }
+                }
 
 		//send filename if necessary
 		if (stristr($debug, 'filename') && !stristr($debug, "[$filename]")) {
@@ -239,7 +249,9 @@ function plugin_routerconfigs_download_config ($device) {
 		}
 
 		if (strpos($result, 'confirm') !== FALSE || strpos($result, 'to tftp:') !== FALSE || $devicetype['forceconfirm']) {
-			$connection->DoCommand('y', $result);
+			$connection->DoCommand('', $result);
+			$connection->DoCommand('', $result);
+			$connection->DoCommand('', $result);
 			$debug .= $result;
 			plugin_routerconfigs_log($ip . "-> DEBUG: confirm result=$result");
 		}
@@ -484,16 +496,24 @@ function plugin_routerconfigs_retrieve_account ($device) {
 		return false;
 	}
 
-	$info = db_fetch_row_prepared('SELECT plugin_routerconfigs_accounts.*
-		FROM plugin_routerconfigs_accounts,plugin_routerconfigs_devices
-		WHERE plugin_routerconfigs_accounts.id = plugin_routerconfigs_devices.account
-		AND plugin_routerconfigs_devices.id = ?',
-                array($device));
+	$info = db_fetch_row_prepared('SELECT 
+                prd.id as id,prd.enabled as enabled,prd.ipaddress as ipadress,prd.hostname as hostname,prd.directory as directory,prd.account as account,prd.lastchange as lastchange,prd.device as device,prd.schedule as schedule,prd.lasterror as lasterror,prd.lastbackup as lastbackup,prd.lastattempt as lastattempt,prd.devicetype as devicetype,prd.debug as debug,
+                pra.name as name,pra.username as username,pra.password as password,pra.enablepw as enablepw,pra.useftp as useftp,pra.ftpserver as ftpserver,pra.ftpuser as ftpuser,pra.ftppass as ftppass 
+		FROM plugin_routerconfigs_accounts AS pra
+		INNER JOIN plugin_routerconfigs_devices AS prd
+		ON pra.id=prd.account
+		WHERE prd.id = ?',
+		array($device));
 
 	if (isset($info['username'])) {
-		$info['password'] = plugin_routerconfigs_decode($info['password']);
-		$info['enablepw'] = plugin_routerconfigs_decode($info['enablepw']);
-		return $info;
+            if(true==isset($info['password']))
+                $info['password'] = plugin_routerconfigs_decode($info['password']);
+            if(true==isset($info['enablepw']))
+                $info['enablepw'] = plugin_routerconfigs_decode($info['enablepw']);
+            if(true==isset($info['ftppass']))
+                $info['ftppass'] = plugin_routerconfigs_decode($info['ftppass']);
+            
+            return $info;
 	}
 
 	return false;
@@ -528,7 +548,7 @@ function plugin_routerconfigs_log($string) {
 
 	$environ = 'ROUTERCONFIGS';
 	/* fill in the current date for printing in the log */
-	$date = date('m/d/Y h:i:s A');
+	$date = date('Y/d/m H:i:s');
 
 	/* determine how to log data */
 	$logdestination = read_config_option('log_destination');
@@ -537,18 +557,16 @@ function plugin_routerconfigs_log($string) {
 	/* format the message */
 	$message = "$date - " . $environ . ': ' . $string . "\n";
 
-	$log_level = 1;
+	$log_level = 5;
 
 	if (substr_count($string,'ERROR:') || substr_count($string,'STATS:')) {
 		$log_level = 2;
 	} else if (substr_count($string,'WARNING:') || substr_count($string,'NOTICE:')) {
 		$log_level = 3;
-	} else if (substr_count($string,'DEBUG:')) {
-		$log_level = 5;
-	}
+	} 
 
 	/* Log to Logfile */
-	if ((($logdestination == 1) || ($logdestination == 2)) && read_config_option('log_verbosity') >= $log_level) {
+	if ((($logdestination == 1) || ($logdestination == 2)) && (read_config_option('log_verbosity') >= $log_level)) {
 		$log_type = 'note';
 
 		if ($logfile == '') {
@@ -620,6 +638,7 @@ class PHPSsh {
 	var $errorcode  = 0;
 	var $use_usleep = 1;	// change to 1 for faster execution
 		// don't change to 1 on Windows servers unless you have PHP 5
+	var $sleeptime=125000;
 	var $debug = '';
 	var $error = 0;
 
@@ -632,7 +651,8 @@ class PHPSsh {
 	5 = Error enabling device
 	*/
 	function Connect($server, $user, $pass, $enablepw, $devicetype) {
-		echo "\nServer: $server User: $user Password: $pass Enablepw: $enablepw Devicetype: $devicetype\n";
+
+		echo "\nServer: $server User: $user Password: $pass Enablepw: $enablepw Devicetype: $devicetype[name]\n";
 
 		$this->debug = '';
 		$rv = 0;
@@ -640,7 +660,7 @@ class PHPSsh {
 		if (!function_exists('ssh2_auth_password')) {
 			plugin_routerconfigs_log($server . "-> DEBUG: PHP doesn't have the ssh2 module installed\nFollow the installation instructions in the official manual at http://www.php.net/manual/en/ssh2.installation.php");
 			$rv=4;
-			return $rv;
+                        return $rv;
 		}
 
 		if (strlen($server)) {
@@ -814,24 +834,6 @@ class PHPTelnet {
 
 	var $debug;
 
-	function __construct() {
-		$this->conn1=chr(0xFF).chr(0xFB).chr(0x1F).chr(0xFF).chr(0xFB).
-			chr(0x20).chr(0xFF).chr(0xFB).chr(0x18).chr(0xFF).chr(0xFB).
-			chr(0x27).chr(0xFF).chr(0xFD).chr(0x01).chr(0xFF).chr(0xFB).
-			chr(0x03).chr(0xFF).chr(0xFD).chr(0x03).chr(0xFF).chr(0xFC).
-			chr(0x23).chr(0xFF).chr(0xFC).chr(0x24).chr(0xFF).chr(0xFA).
-			chr(0x1F).chr(0x00).chr(0x50).chr(0x00).chr(0x18).chr(0xFF).
-			chr(0xF0).chr(0xFF).chr(0xFA).chr(0x20).chr(0x00).chr(0x33).
-			chr(0x38).chr(0x34).chr(0x30).chr(0x30).chr(0x2C).chr(0x33).
-			chr(0x38).chr(0x34).chr(0x30).chr(0x30).chr(0xFF).chr(0xF0).
-			chr(0xFF).chr(0xFA).chr(0x27).chr(0x00).chr(0xFF).chr(0xF0).
-			chr(0xFF).chr(0xFA).chr(0x18).chr(0x00).chr(0x58).chr(0x54).
-			chr(0x45).chr(0x52).chr(0x4D).chr(0xFF).chr(0xF0);
-
-		$this->conn2=chr(0xFF).chr(0xFC).chr(0x01).chr(0xFF).chr(0xFC).
-			chr(0x22).chr(0xFF).chr(0xFE).chr(0x05).chr(0xFF).chr(0xFC).chr(0x21);
-	}
-
 	/*
 	0 = success
 	1 = couldn't open network connection
@@ -841,7 +843,7 @@ class PHPTelnet {
 	*/
 	function Connect($server, $user, $pass, $enablepw, $devicetype) {
 		$this->debug = '';
-		$rv=0;
+		$rv=9;
 		$vers=explode('.',PHP_VERSION);
 		$needvers=array(4,3,0);
 		$j=count($vers);
@@ -944,6 +946,13 @@ class PHPTelnet {
 					while ($x < 10) {
 						sleep(1);
 						$this->GetResponse($r);
+                                                if("" == $r){
+                                                    if (strpos($res, '#') !== FALSE) {
+                                                        $enablepw = '';
+                                                        $rv=0;
+                                                    }
+                                                    break;
+                                                }
 						echo $r;
 						$res .= $r;
 						if (strpos($r, '>') !== FALSE) {
@@ -951,44 +960,51 @@ class PHPTelnet {
 						}
 						$x++;
 					}
-					@fputs($this->fp, "en\r");
+                                        if ($enablepw != ''){
+                                            @fputs($this->fp, "en\r");
 
-					# Get the password prompt again to input the enable password
-					$res = '';
-					$x = 0;
-					while ($x < 10) {
-						sleep(1);
-						$this->GetResponse($r);
-						echo $r;
-						$res .= $r;
-						if (strpos($res, $devicetype['password']) !== FALSE) {
-							break;
-						}
-						$x++;
-					}
-					//$r=explode("\n", $r);
-					@fputs($this->fp, "$enablepw\r");
+                                            # Get the password prompt again to input the enable password
+                                            $res = '';
+                                            $x = 0;
+                                            while ($x < 10) {
+                                                    sleep(1);
+                                                    $this->GetResponse($r);
+                                                    if("" == $r){
+                                                        break;
+                                                    }
+                                                    echo $r;
+                                                    $res .= $r;
+                                                    if (strpos($res, $devicetype['password']) !== FALSE) {
+                                                            break;
+                                                    }
+                                                    $x++;
+                                            }
+                                            //$r=explode("\n", $r);
+                                            @fputs($this->fp, "$enablepw\r");
+                                            $rv=0;
+                                        }
 				}
 
-
-				$res = $r;
-				$x = 0;
-				while ($x < 10) {
-					sleep(1);
-					$this->GetResponse($r);
-					$res .= $r;
-					echo $r;
-					if (strpos($res, '#') !== FALSE || strpos($r, '> (') !== FALSE) {
-						break;
-					}
-					$x++;
-				}
-
-				$r=explode("\n", $r);
-				if (($r[count($r) - 1] == '') || ($this->loginprompt == trim($r[count($r) - 1]))) {
-					$rv = 3;
-					$this->Disconnect();
-				}
+                                if(0!=$rv){
+                                    $res = $r;
+                                    $x = 0;
+                                    while ($x < 10) {
+                                            sleep(1);
+                                            $this->GetResponse($r);
+                                            $res .= $r;
+                                            echo $r;
+                                            if (strpos($res, '#') !== FALSE || strpos($r, '> (') !== FALSE) {
+                                                    break;
+                                            }
+                                            $x++;
+                                    }
+                                
+                                        $r=explode("\n", $r);
+                                        if (($r[count($r) - 1] == '') || ($this->loginprompt == trim($r[count($r) - 1]))) {
+                                                $rv = 3;
+                                                $this->Disconnect();
+                                        }
+                                }
 			} else $rv = 1;
 		}
 
@@ -1033,6 +1049,24 @@ class PHPTelnet {
 	function Sleep() {
 		if ($this->use_usleep) usleep($this->sleeptime);
 		else sleep(1);
+	}
+
+	function PHPTelnet() {
+		$this->conn1=chr(0xFF).chr(0xFB).chr(0x1F).chr(0xFF).chr(0xFB).
+			chr(0x20).chr(0xFF).chr(0xFB).chr(0x18).chr(0xFF).chr(0xFB).
+			chr(0x27).chr(0xFF).chr(0xFD).chr(0x01).chr(0xFF).chr(0xFB).
+			chr(0x03).chr(0xFF).chr(0xFD).chr(0x03).chr(0xFF).chr(0xFC).
+			chr(0x23).chr(0xFF).chr(0xFC).chr(0x24).chr(0xFF).chr(0xFA).
+			chr(0x1F).chr(0x00).chr(0x50).chr(0x00).chr(0x18).chr(0xFF).
+			chr(0xF0).chr(0xFF).chr(0xFA).chr(0x20).chr(0x00).chr(0x33).
+			chr(0x38).chr(0x34).chr(0x30).chr(0x30).chr(0x2C).chr(0x33).
+			chr(0x38).chr(0x34).chr(0x30).chr(0x30).chr(0xFF).chr(0xF0).
+			chr(0xFF).chr(0xFA).chr(0x27).chr(0x00).chr(0xFF).chr(0xF0).
+			chr(0xFF).chr(0xFA).chr(0x18).chr(0x00).chr(0x58).chr(0x54).
+			chr(0x45).chr(0x52).chr(0x4D).chr(0xFF).chr(0xF0);
+
+		$this->conn2=chr(0xFF).chr(0xFC).chr(0x01).chr(0xFF).chr(0xFC).
+			chr(0x22).chr(0xFF).chr(0xFE).chr(0x05).chr(0xFF).chr(0xFC).chr(0x21);
 	}
 
 	function ConnectError($num) {

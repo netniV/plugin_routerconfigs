@@ -79,6 +79,37 @@ $account_edit = array(
 		'max_length' => '64',
 		'size' => '30'
 		),
+	'useftp' => array(
+		'method' => 'checkbox',
+		'friendly_name' => __('Enable FTP', 'routerconfigs'),
+		'description' => __('Check this box to use FTP insted of TFTP.', 'routerconfigs'),
+		'value' => '|arg1:useftp|',
+		'default' => '',
+		'form_id' => false
+                ),
+	'ftpserver' => array(
+		'method' => 'textbox',
+		'friendly_name' => __('Alternative FTP-Server address', 'routerconfigs'),
+		'description' => __('The IP-Address of the FTP-Server if it differs from the globalconfig.', 'routerconfigs'),
+		'value' => '|arg1:ftpserver|',
+		'max_length' => '20',
+		),
+        'ftpuser' => array(
+		'method' => 'textbox',
+		'friendly_name' => __('Username for the FTP-Account', 'routerconfigs'),
+		'description' => __('The username that will be used for the FTP-Account.', 'routerconfigs'),
+		'value' => '|arg1:ftpuser|',
+		'max_length' => '64',
+		),
+	'ftppass' => array(
+		'method' => 'textbox_password',
+		'friendly_name' => __('Password for the FTP-Account', 'routerconfigs'),
+		'description' => __('The password which is neede to login to the FTP-Account.', 'routerconfigs'),
+		'value' => '|arg1:ftppass|',
+		'default' => '',
+		'max_length' => '64',
+		'size' => '30'
+		),
 	'id' => array(
 		'method' => 'hidden_zero',
 		'value' => '|arg1:id|'
@@ -213,6 +244,18 @@ function save_accounts () {
 		raise_message(4);
 	}
 
+       	$save['useftp']       = get_request_var('useftp');
+       	$save['ftpserver']    = get_request_var('ftpserver');
+       	$save['ftpuser']      = get_request_var('ftpuser');
+
+        if (get_nfilter_request_var('ftppass') == get_nfilter_request_var('ftppass_confirm')) {
+		if (!isempty_request_var('ftppass')) {
+			$save['ftppass'] = plugin_routerconfigs_encode(get_nfilter_request_var('ftppass'));
+		}
+	} else {
+		raise_message(4);
+	}
+
 	$id = sql_save($save, 'plugin_routerconfigs_accounts', 'id');
 
 	if (is_error_message()) {
@@ -233,8 +276,7 @@ function edit_accounts () {
 
 	$account = array();
 	if (!isempty_request_var('id')) {
-		$account = db_fetch_row('SELECT * FROM plugin_routerconfigs_accounts WHERE id=' . get_request_var('id'), FALSE);
-		$account['password'] = '';
+		$account = db_fetch_row('SELECT id,name,username,useftp,ftpserver,ftpuser FROM plugin_routerconfigs_accounts WHERE id=' . get_request_var('id'), FALSE);
 		$header_label = __('Account: [edit: %s]', $account['name'], 'routerconfigs');
 	}else{
 		$header_label = __('Account: [new]', 'routerconfigs');
@@ -262,7 +304,8 @@ function show_accounts () {
 
 	get_filter_request_var('page');
 	load_current_session_value('page', 'sess_wmi_accounts_current_page', '1');
-	$num_rows = 30;
+//	$num_rows = 30;
+        $num_rows = read_config_option('num_rows_table');
 
 	$result = db_fetch_assoc('SELECT *
 		FROM plugin_routerconfigs_accounts

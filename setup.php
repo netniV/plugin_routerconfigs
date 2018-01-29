@@ -109,6 +109,10 @@ function routerconfigs_setup_table_new() {
     $data['columns'][] = array('name' => 'username', 'type' => 'varchar(64)', 'NULL' => true);
     $data['columns'][] = array('name' => 'password', 'type' => 'varchar(256)', 'NULL' => true);
     $data['columns'][] = array('name' => 'enablepw', 'type' => 'varchar(256)', 'NULL' => true);
+    $data['columns'][] = array('name' => 'useftp', 'type' => 'varchar(2)', 'NULL' => true);
+    $data['columns'][] = array('name' => 'ftpserver', 'type' => 'varchar(20)', 'NULL' => true);
+    $data['columns'][] = array('name' => 'ftpuser', 'type' => 'varchar(256)', 'NULL' => true);
+    $data['columns'][] = array('name' => 'ftppass', 'type' => 'varchar(256)', 'NULL' => true);
     $data['primary'] = 'id';
     $data['type'] = 'InnoDB';
     $data['comment'] = 'Router Config Accounts';
@@ -174,7 +178,8 @@ function routerconfigs_setup_table_new() {
     $data['type'] = 'InnoDB';
     $data['comment'] = 'Router Config Device Types';
     api_plugin_db_table_create ('routerconfigs', 'plugin_routerconfigs_devicetypes', $data);
-
+        
+        // ITSN: In der Aufzählung der Felder, letztes Feld "checkendinconfig" ergänzt
 	db_execute("REPLACE INTO plugin_routerconfigs_devicetypes
 		(id, name, username, password, copytftp, version, confirm, forceconfirm, checkendinconfig)
 		VALUES
@@ -191,10 +196,12 @@ function routerconfigs_page_head () {
 }
 
 function routerconfigs_poller_bottom () {
+        //cacti_log("DEBUG: Start Routerconfigs Poller.");
 	global $config;
 
 	$running = read_config_option('plugin_routerconfigs_running');
 	if ($running == 1) {
+	   	cacti_log("NOTICE: Routerconfigs already running.");
 		return;
 	}
 
@@ -205,9 +212,12 @@ function routerconfigs_poller_bottom () {
 	}
 
 	$h = date('G', time());
-	$s = date('i', time()) * 60;
+	$s = date('i', time());
+	if(60 < $poller_interval)
+		$s = $s * ($poller_interval / 60);
 
 	if ($h == 0 && $s < $poller_interval) {
+	        //cacti_log("DEBUG: Start Routerconfigs download 0 clock.");
 		$command_string = trim(read_config_option('path_php_binary'));
 
 		if (trim($command_string) == '') {
@@ -218,6 +228,7 @@ function routerconfigs_poller_bottom () {
 
 		exec_background($command_string, $extra_args);
 	} else if ($s < $poller_interval){
+                //cacti_log("DEBUG: Start Routerconfigs download.");
 		$t = time();
 
 		$devices = db_fetch_assoc("SELECT *
@@ -225,6 +236,7 @@ function routerconfigs_poller_bottom () {
 			WHERE enabled = 'on'
 			AND ($t - (schedule * 86400)) - 3600 > lastbackup
 			AND $t - lastattempt > 1800", false);
+			// cacti_log("DEBUG: "."SELECT * FROM plugin_routerconfigs_devices WHERE enabled = 'on' AND ($t - (schedule * 86400)) - 3600 > lastbackup AND $t - lastattempt > 1800");
 
 		if (!empty($devices)) {
 			$command_string = trim(read_config_option('path_php_binary'));
@@ -234,10 +246,13 @@ function routerconfigs_poller_bottom () {
 			}
 
 			$extra_args = ' -q ' . $config['base_path'] . '/plugins/routerconfigs/router-redownload.php';
-
+			
+			//cacti_log("DEBUG: Routerconfigs is executing the following command=".$command_string." with arrgs=".$extra_args);
 			exec_background($command_string, $extra_args);
 		}
-	}
+	}   
+	else
+		cacti_log("DEBUG: s=".$s." poller_interval=".$poller_interval);
 }
 
 function routerconfigs_config_settings () {
@@ -410,4 +425,3 @@ function routerconfigs_draw_navigation_text ($nav) {
 
 	return $nav;
 }
-

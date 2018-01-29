@@ -314,7 +314,8 @@ function show_devicetypes() {
 	}
 
 	load_current_session_value('page', 'sess_routerconfigs_devtypes_current_page', '1');
-	$num_rows = 30;
+//	$num_rows = 30;
+        $num_rows = read_config_option('num_rows_table');
 
 	$result = db_fetch_assoc('SELECT *
 		FROM plugin_routerconfigs_devicetypes
@@ -373,4 +374,3 @@ function show_devicetypes() {
 
 	draw_actions_dropdown($ds_actions);
 }
-

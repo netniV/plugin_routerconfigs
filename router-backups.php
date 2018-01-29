@@ -106,8 +106,9 @@ function show_devices () {
 		$device = $_SESSION['routerconfigs_backups_device'];
 	}
 
-	$num_rows = 30;
-
+//	$num_rows = 30;
+        $num_rows = read_config_option('num_rows_table');
+        
 	if ($device != '') {
 		$sql = 'SELECT prd.hostname, prd.ipaddress, prb.id, prb.username, prb.lastchange,
 			prb.btime, prb.device, prb.directory, prb.filename

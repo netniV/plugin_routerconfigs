@@ -34,7 +34,10 @@ if (strpos($dir, 'plugins') !== false) {
 	chdir('../../');
 }
 
-include('./include/global.php');
+// To let the script run with no browser
+$no_http_headers = true;
+
+include('./include/global.php');	
 include_once($config['base_path'] . '/plugins/routerconfigs/functions.php');
 
 db_execute("REPLACE INTO settings (name, value) VALUES ('plugin_routerconfigs_running', 1)");
@@ -42,3 +45,4 @@ db_execute("REPLACE INTO settings (name, value) VALUES ('plugin_routerconfigs_ru
 plugin_routerconfigs_redownload_failed();
 
 db_execute("REPLACE INTO settings (name, value) VALUES ('plugin_routerconfigs_running', 0)");
+

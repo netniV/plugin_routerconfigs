@@ -28,7 +28,6 @@ chdir('../../');
 include('./include/auth.php');
 
 include_once($config['base_path'] . '/plugins/routerconfigs/functions.php');
-
 include_once($config['base_path'] . '/plugins/routerconfigs/Text/Diff.php');
 include_once($config['base_path'] . '/plugins/routerconfigs/Text/Diff/Renderer.php');
 include_once($config['base_path'] . '/plugins/routerconfigs/Text/Diff/Renderer/table.php');
@@ -44,24 +43,25 @@ $file2   = get_filter_request_var('file2');
 $files1  = array();
 $files2  = array();
 
+$devices = array();
+
+
+$devices = db_fetch_assoc('SELECT id, directory, hostname
+        FROM plugin_routerconfigs_devices
+        ORDER BY hostname');
+    
 if (empty($device1) || empty($device2)) {
-	$devices = db_fetch_assoc('SELECT id, directory, hostname
-		FROM plugin_routerconfigs_devices
-		ORDER BY hostname');
-
-	if (sizeof($devices)) {
-		$default = $devices[0]['id'];
-
-		if (!empty($device1)) {
-			if ($device1 == $default) {
-				$device2 = $default;
-			}
-		}else{
-			if ($device2 == $default) {
-				$device1 = $default;
-			}
-		}
-	}
+    if (sizeof($devices)) {
+            if (!empty($device1)) {
+                    if ($device1 == $devices[0]['id']) {
+                            $device2 = $devices[0]['id'];
+                    }
+            }else{
+                    if ($device2 == $devices[0]['id']) {
+                            $device1 = $devices[0]['id'];
+                    }
+            }
+    }
 }
 
 if (!empty($device1)) {
@@ -120,40 +120,46 @@ form_end();
 
 html_start_box(__('Compare Output', 'routerconfigs'), '100%', '', '1', 'center', '');
 
-if (!empty($file1) && !empty($file2)) {
-	$device1 = db_fetch_row_prepared('SELECT * FROM plugin_routerconfigs_backups WHERE id = ?', array($file1));
-	$device2 = db_fetch_row_prepared('SELECT * FROM plugin_routerconfigs_backups WHERE id = ?', array($file2));
+if (isset($file1) && isset($file2)) {
+    if(0!=$file1)
+	$device1 = db_fetch_row_prepared('SELECT id,directory,filename,config FROM plugin_routerconfigs_backups WHERE id = ?', array($file1));
+    if(0!=$file2)
+	$device2 = db_fetch_row_prepared('SELECT id,directory,filename,config FROM plugin_routerconfigs_backups WHERE id = ?', array($file2));
 
-	if (isset($device1['id']) && isset($device2['id'])) {
-		/* Load the lines of each file. */
-		$lines1 = explode("\n", $device1['config']);
-		$lines2 = explode("\n", $device2['config']);
+	if (isset($device1['config']) && isset($device2['config'])) {
+            /* Load the lines of each file. */
+            $lines1 = explode("\n", $device1['config']);
+            $lines2 = explode("\n", $device2['config']);
 
-		/* Create the Diff object. */
-		$diff = new Horde_Text_Diff('auto', array($lines1, $lines2));
+            if (1 < count($lines1) && 1 < count($lines2)){
+                    /* Create the Diff object. */
+                    $diff = new Text_Diff('auto', array($lines1, $lines2));
 
-		/* Output the diff in unified format. */
-		$renderer = new Horde_Text_Diff_Renderer_table();
+                    /* Output the diff in unified format. */
+                    $renderer = new Text_Diff_Renderer_table();
 
-		$text = $renderer->render($diff);
+                    $text = $renderer->render($diff);
 
-		html_start_box('', '100%', '', '1', 'center', '');
-		html_header(array($device1['directory'] . '/' . $device1['filename'], '', $device2['directory'] . '/' . $device2['filename']));
+                    html_start_box('', '100%', '', '1', 'center', '');
+                    html_header(array($device1['directory'] . '/' . $device1['filename'], '', $device2['directory'] . '/' . $device2['filename']));
 
-		print "<tr bgcolor='#6d88ad' height='1'><td width='50%'></td><td width='1'></td><td width='50%'></td></tr>";
+                    print "<tr bgcolor='#6d88ad' height='1'><td width='50%'></td><td width='1'></td><td width='50%'></td></tr>";
 
-		if (trim($text) == '') {
-			print '<tr><td colspan=3><center>' . __('There are no Changes', 'routerconfigs') . '</center></td></tr>';
-		} else {
-			$text = str_replace("\n", '<br>', $text);
-			$text = str_replace('</td></tr>', '</td></tr>' . "\n", $text);
+                    if (trim($text) == '') {
+                            print '<tr><td colspan=3><center>' . __('There are no Changes', 'routerconfigs') . '</center></td></tr>';
+                    } else {
+                            $text = str_replace("\n", '<br>', $text);
+                            $text = str_replace('</td></tr>', '</td></tr>' . "\n", $text);
 
-			echo $text;
-		}
+                            echo $text;
+                    }
 
-		html_end_box(false);
+                    html_end_box(false);
+                }
+                else
+                    print '<tr><td><h3>' . __('Error, at least one config is empty.', 'routerconfigs') . '</h3></td></tr>';
 	}else{
-		print '<tr><td><h3>' . __('Error, you must have backups for each device.', 'routerconfigs') . '</h3></td></tr>';
+		print '<tr><td><h3>' . __('Error, you must have backups for each device!', 'routerconfigs') . '</h3></td></tr>';
 	}
 }else{
 	print '<tr><td><h3>' . __('Error, you must have backups for each device.', 'routerconfigs') . '</h3></td></tr>';
@@ -190,4 +196,3 @@ html_end_box();
 <?php
 
 bottom_footer();
-
