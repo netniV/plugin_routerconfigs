@@ -187,7 +187,7 @@ function plugin_routerconfigs_download_config ($device) {
 	}
 
 	$connection = new PHPSsh();
-	
+
 	if (($result = $connection->Connect($device['ipaddress'], $info['username'], $info['password'], $info['enablepw'], $devicetype))) {
 		$connection = NULL;
 		$connection = new PHPTelnet();
@@ -496,7 +496,7 @@ function plugin_routerconfigs_retrieve_account ($device) {
 		return false;
 	}
 
-	$info = db_fetch_row_prepared('SELECT 
+	$info = db_fetch_row_prepared('SELECT
                 prd.id as id,prd.enabled as enabled,prd.ipaddress as ipadress,prd.hostname as hostname,prd.directory as directory,prd.account as account,prd.lastchange as lastchange,prd.device as device,prd.schedule as schedule,prd.lasterror as lasterror,prd.lastbackup as lastbackup,prd.lastattempt as lastattempt,prd.devicetype as devicetype,prd.debug as debug,
                 pra.name as name,pra.username as username,pra.password as password,pra.enablepw as enablepw,pra.useftp as useftp,pra.ftpserver as ftpserver,pra.ftpuser as ftpuser,pra.ftppass as ftppass 
 		FROM plugin_routerconfigs_accounts AS pra
@@ -520,12 +520,12 @@ function plugin_routerconfigs_retrieve_account ($device) {
 }
 
 function plugin_routerconfigs_decode($info) {
-	plugin_routerconfigs_log("Info passed to decode: $info");
+	plugin_routerconfigs_log("DEBUG: Info passed to decode: $info");
 	$info = base64_decode($info);
-	plugin_routerconfigs_log("Info Base64 decoded: $info");
+	plugin_routerconfigs_log("DEBUG: Info Base64 decoded: $info");
 
 	$info = unserialize($info);
-	plugin_routerconfigs_log("Info Unserialized");
+	plugin_routerconfigs_log("DEBUG: Info Unserialized");
 
 	return $info['password'];
 }
@@ -547,81 +547,20 @@ function plugin_routerconfigs_log($string) {
 	global $config;
 
 	$environ = 'ROUTERCONFIGS';
-	/* fill in the current date for printing in the log */
-	$date = date('Y/d/m H:i:s');
 
-	/* determine how to log data */
-	$logdestination = read_config_option('log_destination');
-	$logfile        = read_config_option('path_cactilog');
-
-	/* format the message */
-	$message = "$date - " . $environ . ': ' . $string . "\n";
-
-	$log_level = 5;
+	$log_level = POLLER_VERBOSITY_NONE;
 
 	if (substr_count($string,'ERROR:') || substr_count($string,'STATS:')) {
-		$log_level = 2;
-	} else if (substr_count($string,'WARNING:') || substr_count($string,'NOTICE:')) {
-		$log_level = 3;
-	} 
-
-	/* Log to Logfile */
-	if ((($logdestination == 1) || ($logdestination == 2)) && (read_config_option('log_verbosity') >= $log_level)) {
-		$log_type = 'note';
-
-		if ($logfile == '') {
-			$logfile = $config['base_path'] . '/log/cacti.log';
-		}
-
-		/* echo the data to the log (append) */
-		$fp = @fopen($logfile, 'a');
-
-		if ($fp) {
-			@fwrite($fp, $message);
-			fclose($fp);
-		}
+		$log_level = POLLER_VERBOSITY_LOW;
+	} else if (substr_count($string,'WARNING:')) {
+		$log_levle = POLLER_VERBOSITY_MEDIUM;
+	} else if (substr_count($string,'NOTICE:')) {
+		$log_level = POLLER_VERBOSITY_HIGH;
+	} else if (substr_count($string,'DEBUG:')) {
+		$log_level = POLLER_VERBOSITY_DEBUG;
 	}
 
-	/* Log to Syslog/Eventlog */
-	/* Syslog is currently Unstable in Win32 */
-	if (($logdestination == 2) || ($logdestination == 3)) {
-		$string   = strip_tags($string);
-		$log_type = '';
-
-		if (substr_count($string,'ERROR:')) {
-			$log_type = 'err';
-		} else if (substr_count($string,'WARNING:')) {
-			$log_type = 'warn';
-		} else if (substr_count($string,'STATS:')) {
-			$log_type = 'stat';
-		} else if (substr_count($string,'NOTICE:')) {
-			$log_type = 'note';
-		}
-
-		if (strlen($log_type)) {
-			define_syslog_variables();
-
-			if ($config['cacti_server_os'] == 'win32') {
-				openlog('Cacti', LOG_NDELAY | LOG_PID, LOG_USER);
-			} else {
-				openlog('Cacti', LOG_NDELAY | LOG_PID, LOG_SYSLOG);
-			}
-
-			if (($log_type == 'err') && (read_config_option('log_perror'))) {
-				syslog(LOG_CRIT, $environ . ': ' . $string);
-			}
-
-			if (($log_type == 'warn') && (read_config_option('log_pwarn'))) {
-				syslog(LOG_WARNING, $environ . ': ' . $string);
-			}
-
-			if ((($log_type == 'stat') || ($log_type == 'note')) && (read_config_option('log_pstats'))) {
-				syslog(LOG_INFO, $environ . ': ' . $string);
-			}
-
-			closelog();
-		}
-	}
+	cacti_log($string, false, $environ, $log_level);
 }
 
 /*
